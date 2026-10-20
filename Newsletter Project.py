@@ -1,37 +1,46 @@
 import string
-from  import mpmath
+import mpmath as mp
 
-def get_pi_digits(num_digits):
+def get_pi_digits(num_digits: int) -> str:
     """Generates pi to the specified number of digits using mpmath."""
-    mp.dps = num_digits + 5
-    pi_str = str(mp.pi).replace('.', '')
-    return pi_str[:num_digits]
+    if not isinstance(num_digits, int) or isinstance(num_digits, bool) or num_digits < 1:
+        raise ValueError("num_digits must be a positive integer")
 
-def text_to_num(text):
+    pi_context = mp.mp.clone()
+    pi_context.dps = num_digits + 10
+    pi_string = pi_context.nstr(pi_context.pi, n=num_digits + 10)
+    return pi_string.replace(".", "")[:num_digits]
+
+def text_to_num(text: str) -> str:
     """Converts text to a number string using A=1, B=2..."""
     text = text.upper().strip()
     return "".join(str(ord(char) - 64) for char in text if char in string.ascii_uppercase)
 
-def find_pattern_in_pi(pi_string, search_target, is_text=False):
-    """Searches for a pattern and returns its index location."""
+def find_pattern_in_pi(pi_string: str, search_target: str | int, is_text: bool = False) -> int:
+    """Searches for a pattern and returns its zero-based index, or -1 if not found."""
     if is_text:
-        search_digits = text_to_num(search_target)
-        print(f"Searching for text'{search_target}' aencoded as numbers: {search_digits}")
+        search_digits = text_to_num(str(search_target))
+        print(f"Searching for text '{search_target}' encoded as numbers: {search_digits}")
     else:
         search_digits = str(search_target)
-        print(f"Searchig for numerical pattern: {search_digits}")
+        print(f"Searching for numerical pattern: {search_digits}")
+
+    if not search_digits:
+        print("Search pattern is empty.")
+        return -1
 
     position = pi_string.find(search_digits)
     if position != -1:
-        print(f"💋 Pattern found at index: {position + 1}💋")
+        print(f"Pattern found at index: {position + 1}")
     else:
-        print("❌ Pattern not found in this slice of Pi.")
+        print("Pattern not found in this slice of Pi.")
+    return position
 
 # *** MAIN EXECUTION ***
 if __name__ == "__main__":
     # 1. Generate pi digits
     print("Generating digits of Pi...")
-    pi_digits = get_pi_digits(1000000000)  # Generate 1,000,000,000 digits of Pi
+    pi_digits = get_pi_digits(100_000)
     print("Pi digits generated.")
 
     # 2. Search for a numerical pattern
