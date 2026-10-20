@@ -1,0 +1,148 @@
+import requests
+
+PI_API_URL = "https://api.pi.delivery/v1/pi"
+MAX_DIGITS_PER_REQUEST = 1000
+BASE26_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+def iter_pi_digit_chunks(limit: int | None = None):
+    """
+    Yields consecutive chunks of Pi, optionally stopping after `limit` digits.
+    """
+    if limit is not None and (
+        not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+    ):
+        raise ValueError("limit must be a positive integer")
+
+    start = 0
+    while limit is None or start < limit:
+        chunk_size = MAX_DIGITS_PER_REQUEST
+        if limit is not None:
+            chunk_size = min(chunk_size, limit - start)
+        response = requests.get(
+            PI_API_URL,
+            params={"start": start, "numberOfDigits": chunk_size},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        pi_data = data.get("content") if isinstance(data, dict) else None
+        if not isinstance(pi_data, str) or len(pi_data) != chunk_size or not pi_data.isdigit():
+            raise ValueError(f"Pi API returned invalid data for digits {start}–{start + chunk_size - 1}")
+        yield start, pi_data
+        start += chunk_size
+
+def get_pi_digits(limit: int = 100_000) -> str:
+    """Fetches the first `limit` digits of Pi into memory."""
+    return "".join(chunk for _, chunk in iter_pi_digit_chunks(limit))
+
+def word_to_pi_sequence(word: str) -> str:
+    """
+    Validates and normalizes a word for searching in Pi's base-26 representation.
+    """
+    if not word:
+        raise ValueError("Search word must not be empty.")
+    if any(not ("A" <= char <= "Z" or "a" <= char <= "z") for char in word):
+        raise ValueError("Only English letters A-Z are supported.")
+    return word.upper()
+
+def fraction_to_base26(numerator: int, denominator: int, length: int) -> str:
+    """Returns the first `length` base-26 digits of a fraction between 0 and 1."""
+    digits = []
+    for _ in range(length):
+        numerator *= 26
+        digit, numerator = divmod(numerator, denominator)
+        digits.append(BASE26_ALPHABET[digit])
+    return "".join(digits)
+
+def decimal_string_to_int(digits: str) -> int:
+    """Converts decimal digits without exceeding Python's integer-string limit."""
+    value = 0
+    for start in range(0, len(digits), 1000):
+        chunk = digits[start:start + 1000]
+        value = value * (10 ** len(chunk)) + int(chunk)
+    return value
+
+def pi_decimal_prefix_to_base26(pi_digits: str) -> str:
+    """
+    Converts a decimal prefix of Pi into the stable base-26 letters it determines.
+
+    The leading integer digit 3 maps to D. Fractional letters are emitted only
+    when the available decimal prefix guarantees their values.
+    """
+    if not pi_digits or not pi_digits.isdigit() or pi_digits[0] != "3":
+        raise ValueError("Pi digits must be a decimal prefix beginning with 3.")
+
+    fractional_digits = pi_digits[1:]
+    if not fractional_digits:
+        return "D"
+
+    denominator = 10 ** len(fractional_digits)
+    numerator = decimal_string_to_int(fractional_digits)
+    length = len(fractional_digits) + 2
+    lower = fraction_to_base26(numerator, denominator, length)
+
+    upper_numerator = numerator + 1
+    if upper_numerator == denominator:
+        upper = "Z" * length
+    else:
+        upper = fraction_to_base26(upper_numerator, denominator, length)
+
+    stable_length = 0
+    while stable_length < length and lower[stable_length] == upper[stable_length]:
+        stable_length += 1
+    return "D" + lower[:stable_length]
+
+def find_word_in_pi(word, pi_digits):
+    """
+    Searches for `word` in the stable base-26 letters of a decimal Pi prefix.
+    Returns the index if found, otherwise -1.
+    """
+    sequence = word_to_pi_sequence(word)
+    pi_letters = pi_decimal_prefix_to_base26(pi_digits)
+    return pi_letters.find(sequence)
+
+def search_word_in_pi(word: str, limit: int | None = None) -> int:
+    """Search Pi's base-26 letters; return the zero-based match position or -1."""
+    if limit is not None and (
+        not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+    ):
+        raise ValueError("limit must be a positive integer")
+
+    sequence = word_to_pi_sequence(word)
+    if not sequence:
+        raise ValueError("Search word must not be empty.")
+
+    pi_digits = ""
+    next_progress = 100_000
+    for start, chunk in iter_pi_digit_chunks(limit):
+        pi_digits += chunk
+        pi_letters = pi_decimal_prefix_to_base26(pi_digits)
+        position = pi_letters.find(sequence)
+        if position != -1:
+            return position
+
+        scanned = start + len(chunk)
+        if scanned >= next_progress:
+            print(f"Scanned {scanned:,} digits...")
+            next_progress = (scanned // 100_000 + 1) * 100_000
+
+    return -1
+
+def main():
+    # User input
+    word = input("Enter a word to search in Pi: ").strip()
+    if not word:
+        print("Empty input. Please enter a valid word.")
+        return
+
+    print("Searching Pi until the word is found...")
+    try:
+        position = search_word_in_pi(word)
+    except (requests.RequestException, ValueError) as error:
+        print(f"Could not retrieve Pi digits: {error}")
+        return
+
+    print(f"'{word}' found at base-26 letter position {position + 1}. Stopping search.")
+
+if __name__ == "__main__":
+    main()
